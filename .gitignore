@@ -1,6 +1,31 @@
+#ambientes virtuais
+.venv/
 venv/
+
+#compilados pelo Python
 __pycache__/
-*.pyc
-*.pyo
-.DS_Store
+*.py[cod]
+*$py.class
+.pytest_cache
+
+#arquivos de build
+dist/
+build/
+*.egg-info/
+
+#arquivos gerados
+resultados.xlsx
+
+#arquivos de log
 *.log
+
+#arquivos de configuração de ambiente
+.env
+
+#arquivos do sistema operacional
+.DS_Store
+Thumbs.db
+
+#pastas de IDEs e editores
+.vscode/
+.idea/
