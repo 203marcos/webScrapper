@@ -76,4 +76,4 @@ O script abrirá o navegador, realizará a extração dos dados e gerará o arqu
 
 Considerações
 	•	Manutenção: Se o layout ou as classes CSS do site Reclame Aqui mudarem, pode ser necessário atualizar os seletores no código.
-	•	Contribuição: Sinta-se à vontade para abrir issues ou enviar pull requests para melhorias.
+	

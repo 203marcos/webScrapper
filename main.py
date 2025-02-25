@@ -51,7 +51,7 @@ def main():
     print("Dados salvos em resultados.xlsx")
 
     # Encerra o WebDriver
-    scraper.close_driver()
+    driver.quit()
 
 
 if __name__ == "__main__":

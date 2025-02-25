@@ -21,23 +21,23 @@ class ReclameAquiScraper:
     def open_reclame_aqui_home(self):
         self.driver.execute_script(
             "window.open('https://www.reclameaqui.com.br/', '_blank')")
-        time.sleep(random.uniform(3, 6))
+        time.sleep(5)
         self.driver.switch_to.window(self.driver.window_handles[1])
         self.driver.execute_script("window.scrollTo(0, 500);")
 
     def search_for_electricity(self):
         input_element = self.driver.find_element(
-            By.CSS_SELECTOR, "input.text-steel.text-sm.py-4.w-full.border-none")
+            By.XPATH, '//*[@id="homeRankings"]/div/div/div[2]/astro-island/div/div[1]/div/div[1]/input')
         ActionChains(self.driver).move_to_element(
             input_element).pause(1).click().perform()
         input_element.clear()
         input_element.send_keys("Energia elétrica")
-        time.sleep(random.uniform(2, 4))
+        time.sleep(5)
         button = self.driver.find_element(
             By.XPATH, "//button[@title='Energia elétrica']")
         ActionChains(self.driver).move_to_element(
             button).pause(1).click().perform()
-        time.sleep(random.uniform(3, 5))
+        time.sleep(5)
 
     def get_best_companies(self):
         soup = BeautifulSoup(self.driver.page_source, "html.parser")
@@ -62,7 +62,7 @@ class ReclameAquiScraper:
             )
         )
         link_piores.click()
-        time.sleep(random.uniform(4, 6))
+        time.sleep(5)
 
     def get_worst_companies(self):
         soup = BeautifulSoup(self.driver.page_source, "html.parser")
@@ -83,12 +83,8 @@ class ReclameAquiScraper:
         # Garante a URL completa
         full_url = url if url.startswith("http") else self.base_url + url
         self.driver.get(full_url)
-        time.sleep(random.uniform(3, 6))
+        time.sleep(5)
         html = self.driver.page_source
         data = self.parser.extract_company_data(html)
         data["URL"] = full_url  # Adiciona a URL aos dados retornados
         return data
-
-    def close_driver(self):
-        time.sleep(15)
-        self.driver.quit()
