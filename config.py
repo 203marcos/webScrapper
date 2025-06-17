@@ -2,6 +2,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 
 
+
 def get_driver():
 
     # Retorna uma instância configurada do Chrome WebDriver que utilizei para escapar do CAPTCHA cloudfare

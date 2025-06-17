@@ -1,90 +1,105 @@
 import time
 import random
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+import cloudscraper
 from bs4 import BeautifulSoup
 
-from src.scrapers.parser import ReclameAquiParser
-
-
 class ReclameAquiScraper:
-    def __init__(self, driver):
+    def __init__(self, driver, base_url):
         self.driver = driver
-        self.base_url = "https://www.reclameaqui.com.br"
-        self.parser = ReclameAquiParser()
-        # Agora, as listas armazenam dicionários com 'url' e 'nota'
-        self.best_companies_links = []
-        self.worst_companies_links = []
+        self.base_url = base_url
+        self.comments = []
+        self.commentsFilter = []
 
-    def open_reclame_aqui_home(self):
-        self.driver.execute_script(
-            "window.open('https://www.reclameaqui.com.br/', '_blank')")
-        time.sleep(5)
-        self.driver.switch_to.window(self.driver.window_handles[1])
-        self.driver.execute_script("window.scrollTo(0, 500);")
-
-    def search_for_electricity(self):
-        input_element = self.driver.find_element(
-            By.XPATH, '//*[@id="homeRankings"]/div/div/div[2]/astro-island/div/div[1]/div/div[1]/input')
-        ActionChains(self.driver).move_to_element(
-            input_element).pause(1).click().perform()
-        input_element.clear()
-        input_element.send_keys("Energia elétrica")
-        time.sleep(5)
-        button = self.driver.find_element(
-            By.XPATH, "//button[@title='Energia elétrica']")
-        ActionChains(self.driver).move_to_element(
-            button).pause(1).click().perform()
-        time.sleep(5)
-
-    def get_best_companies(self):
-        soup = BeautifulSoup(self.driver.page_source, "html.parser")
-        listas = soup.find_all("div", class_="list svelte-lzrvt6")
-        if listas:
-            melhores = listas[0].find_all(
-                "a", {"data-testid": "listing-ranking"}, href=True)
-            self.best_companies_links = []
-            for melhor in melhores[:3]:
-                url = melhor["href"]
-                rating_span = melhor.find(
-                    "span", class_="text-sm font-bold text-black")
-                rating = rating_span.get_text(
-                    strip=True) if rating_span else "N/D"
-                self.best_companies_links.append({"url": url, "nota": rating})
-
-    def click_worst_companies_tab(self):
-        link_piores = WebDriverWait(self.driver, 10).until(
-            EC.element_to_be_clickable(
-                (By.XPATH,
-                 '//*[@id="homeRankings"]/div/div/div[2]/astro-island/div/div[2]/ul/li[2]')
-            )
+    def get_comments_cloudscraper(self):
+        scraper = cloudscraper.create_scraper(
+            browser={
+                "browser": "chrome",
+                "platform": "windows",
+            },
         )
-        link_piores.click()
-        time.sleep(5)
+        response = scraper.get(self.base_url)
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, "html.parser")
+            # Busca todos os <a> que possuem um <h4> dentro (link da reclamação)
+            reclamacoes = soup.find_all("a", href=True)
+            comments = []
+            base_url = "https://www.reclameaqui.com.br"
+            next_page_url = self.base_url
 
-    def get_worst_companies(self):
-        soup = BeautifulSoup(self.driver.page_source, "html.parser")
-        listas = soup.find_all("div", class_="list svelte-lzrvt6")
-        if listas:
-            piores = listas[0].find_all(
-                "a", {"data-testid": "listing-ranking"}, href=True)
-            self.worst_companies_links = []
-            for pior in piores[:3]:
-                url = pior["href"]
-                rating_span = pior.find(
-                    "span", class_="text-sm font-bold text-black")
-                rating = rating_span.get_text(
-                    strip=True) if rating_span else "N/D"
-                self.worst_companies_links.append({"url": url, "nota": rating})
+            while next_page_url:
+                response = scraper.get(next_page_url)
+                if response.status_code != 200:
+                    break
+                soup = BeautifulSoup(response.text, "html.parser")
+                reclamacoes = soup.find_all("a", href=True)
 
-    def extract_company_data(self, url):
-        # Garante a URL completa
-        full_url = url if url.startswith("http") else self.base_url + url
-        self.driver.get(full_url)
-        time.sleep(5)
-        html = self.driver.page_source
-        data = self.parser.extract_company_data(html)
-        data["URL"] = full_url  # Adiciona a URL aos dados retornados
-        return data
+                for link_tag in reclamacoes:
+                    h4 = link_tag.find("h4")
+                    
+                    if not h4:
+                        continue
+                    href = link_tag["href"]
+                    if not href.startswith("http"):
+                        href = base_url + href
+
+                    # Visita a página individual da reclamação
+                    rec_response = scraper.get(href)
+                    if rec_response.status_code != 200:
+                        continue
+                    rec_soup = BeautifulSoup(rec_response.text, "html.parser")
+
+                    # Título
+                    titulo_tag = rec_soup.find(attrs={"data-testid": "complaint-title"}) or rec_soup.find("h1")
+                    titulo = titulo_tag.get_text(strip=True) if titulo_tag else ""
+
+                    # Descrição
+                    descricao_tag = rec_soup.find(attrs={"data-testid": "complaint-description"})
+                    if not descricao_tag:
+                        # fallback: primeiro <p> relevante
+                        for p in rec_soup.find_all("p"):
+                            texto = p.get_text(strip=True)
+                            if texto and not texto.startswith("Essa reclamação foi publicada há mais de"):
+                                descricao_tag = p
+                                break
+                    descricao = descricao_tag.get_text(strip=True) if descricao_tag else ""
+
+                    # Status
+                    status = ""
+                    status_div = rec_soup.find(attrs={"data-testid": "complaint-status"})
+                    if status_div:
+                        status_span = status_div.find("span")
+                        if status_span:
+                            status = status_span.get_text(strip=True)
+                    if not status:
+                        for span in rec_soup.find_all("span"):
+                            texto = span.get_text(strip=True)
+                            if texto in ["Não respondida", "Respondida", "Não resolvido", "Resolvido"]:
+                                status = texto
+                                break
+
+                    if titulo and descricao and status:
+                        comments.append({
+                            "titulo": titulo,
+                            "descricao": descricao,
+                            "status": status,
+                            "url": href
+                        })
+
+                    time.sleep(random.uniform(1, 2))
+
+                # Procura o link da próxima página
+                next_link = soup.find("a", text="Próxima")
+                if next_link and next_link["href"]:
+                    next_page_url = base_url + next_link["href"]
+                else:
+                    next_page_url = None
+            
+            self.comments = comments
+            self.commentsFilter = [
+                c for c in comments if c["status"] == "Não respondida"]
+        else:
+            self.comments = []
+            self.commentsFilter = []
+
+
+

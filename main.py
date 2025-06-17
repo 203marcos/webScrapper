@@ -1,58 +1,61 @@
-import pandas as pd
-from config import get_driver
 from src.scrapers.scraper import ReclameAquiScraper
+import schedule
+import time
+from flask import Flask, Response, request, jsonify
+import threading
+import json
 
+
+app = Flask(__name__)
+API_KEY = "123456"
+
+comments_cache = {
+    "vivo": [],
+    "claro": [],
+    "tim": []
+}
+
+URLS = {
+    "vivo": "https://www.reclameaqui.com.br/empresa/vivo-celular-fixo-internet-tv/lista-reclamacoes/?pagina=1&status=NOT_ANSWERED",
+    "claro": "https://www.reclameaqui.com.br/empresa/claro/lista-reclamacoes/?status=NOT_ANSWERED",
+    "tim": "https://www.reclameaqui.com.br/empresa/tim-celular/lista-reclamacoes/?status=NOT_ANSWERED"
+}
+
+def scrape_and_update_cache(empresa):
+    print(f"Iniciando scraping para: {empresa}")
+    scraper = ReclameAquiScraper(None, URLS[empresa])
+    scraper.get_comments_cloudscraper()
+    print(f"Total de comentários coletados para {empresa}: {len(scraper.commentsFilter)}")
+    comments_cache[empresa] = scraper.commentsFilter
 
 def main():
-    # Inicia o WebDriver
-    driver = get_driver()
+    print("Iniciando scraping inicial...")
+    for empresa in URLS:
+        scrape_and_update_cache(empresa)
+    print("Scraping inicial concluído.")
 
-    # Instancia o Scraper
-    scraper = ReclameAquiScraper(driver)
+@app.route("/comments/<empresa>", methods=["GET"])
+def get_comments_empresa(empresa):
+    if request.headers.get("x-api-key") != API_KEY:
+        return jsonify({"detail": "Unauthorized"}), 401
+    if empresa not in comments_cache:
+        return jsonify({"detail": "Empresa não encontrada"}), 404
+    # Serializa o JSON com ensure_ascii=False
+    return Response(
+        json.dumps({"comments": comments_cache[empresa]}, ensure_ascii=False),
+        mimetype="application/json"
+    )
 
-    # Abre a aba principal do Reclame Aqui
-    scraper.open_reclame_aqui_home()
-
-    # Faz a busca por Energia Elétrica
-    scraper.search_for_electricity()
-
-    # Extrai os links e as notas das melhores empresas
-    scraper.get_best_companies()
-
-    # Clica na aba de piores empresas e extrai seus links e notas
-    scraper.click_worst_companies_tab()
-    scraper.get_worst_companies()
-
-    print("Melhores empresas:", scraper.best_companies_links)
-    print("Piores empresas:", scraper.worst_companies_links)
-
-    # Extrai os dados para cada empresa e sobrescreve a nota com a extraída na listagem
-    resultado_melhores = []
-    for company in scraper.best_companies_links:
-        dados = scraper.extract_company_data(company["url"])
-        dados["Nota da Empresa"] = company["nota"]
-        resultado_melhores.append(dados)
-
-    resultado_piores = []
-    for company in scraper.worst_companies_links:
-        dados = scraper.extract_company_data(company["url"])
-        dados["Nota da Empresa"] = company["nota"]
-        resultado_piores.append(dados)
-
-    # Exporta para Excel em planilhas separadas
-    with pd.ExcelWriter("resultados.xlsx") as writer:
-        df_melhores = pd.DataFrame(resultado_melhores)
-        df_melhores.to_excel(
-            writer, sheet_name="Melhores Empresas", index=False)
-
-        df_piores = pd.DataFrame(resultado_piores)
-        df_piores.to_excel(writer, sheet_name="Piores Empresas", index=False)
-
-    print("Dados salvos em resultados.xlsx")
-
-    # Encerra o WebDriver
-    driver.quit()
-
+def schedule_job():
+    schedule.every(20).minutes.do(main)
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
 
 if __name__ == "__main__":
-    main()
+    # Executa o scraping inicial em uma thread separada
+    threading.Thread(target=main, daemon=True).start()
+    # Inicia o agendamento em uma thread separada
+    threading.Thread(target=schedule_job, daemon=True).start()
+    # Inicia o Flask (servidor web)
+    app.run(debug=True, threaded=True)
